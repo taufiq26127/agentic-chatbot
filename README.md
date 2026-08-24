@@ -9,6 +9,7 @@ Alur di bawah menunjukkan proses inti yang saat ini masih sederhana: dari `START
 
 ```mermaid
 flowchart TD
-    START((START)) --> chat[chatbot]
-    chat --> END((END))
+    A([START]) --> B[chatbot]
+    B --> C([END])
+
 ```
