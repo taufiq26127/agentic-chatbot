@@ -1,33 +1,14 @@
-from agentic_chatbot_rag_backend import chat_bot, get_all_thread
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from agentic_chatbot_rag_backend import chatbot, get_all_threads, ingest_rag_document
+
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
+
 import streamlit as st
-import uuid  # Load environment variables from .env file
-
-st.set_page_config(
-    page_title="Agentic Chatbot",
-    page_icon="🤖",
-    layout="centered",
-)
-
-st.markdown(
-    """
-    <style>
-    .block-container { max-width: 850px; padding-top: 2rem; }
-    [data-testid="stChatMessage"] { padding: 0.4rem 0; }
-    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
-        line-height: 1.65;
-    }
-    [data-testid="stSidebar"] .stButton button {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+import uuid
+import tempfile
+import os
 
 
+# change list answer ai
 def message_text(content):
     """Convert LangChain text or content blocks to renderable Markdown."""
     if isinstance(content, str):
@@ -43,22 +24,14 @@ def message_text(content):
     return str(content or "")
 
 
-def tool_name(message):
-    """Get a readable tool name from a tool call or tool result."""
-    return getattr(message, "name", None) or "tool"
-
-
-def render_tool_history(tools):
-    if not tools:
-        return
-    with st.expander(f"🔧 {len(tools)} tool dipanggil", expanded=False):
-        for name in tools:
-            st.caption(f"• `{name}`")
-
-
 # Generate a unique thread ID for each new conversation
 def generate_thread_id():
     return str(uuid.uuid4())
+
+
+def tool_name(message):
+    """Get a readable tool name from a tool call or tool result."""
+    return getattr(message, "name", None) or "tool"
 
 
 # Add a new thread ID to the conversation list
@@ -67,6 +40,14 @@ def add_thread(thread_id):
     # Prevent the same thread from being added multiple times
     if thread_id not in st.session_state["chat_threads"]:
         st.session_state["chat_threads"].append(thread_id)
+
+
+def render_tool_history(tools):
+    if not tools:
+        return
+    with st.expander(f"🔧 {len(tools)} tool dipanggil", expanded=False):
+        for name in tools:
+            st.caption(f"• `{name}`")
 
 
 # Create a completely new chat conversation
@@ -86,12 +67,14 @@ def reset_chat():
 def load_conversation(thread_id):
 
     # Get the saved state for the selected thread
-    state = chat_bot.get_state(config={"configurable": {"thread_id": thread_id}})
+    state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
 
     # Return saved messages
     # Return an empty list if no messages are available
     return state.values.get("messages", [])
 
+
+st.set_page_config(page_title="Agentic Chatbot", page_icon="🤖")
 
 # Display the main application title
 st.title("Agentic Chatbot with LangGraph")
@@ -109,11 +92,12 @@ if "thread_id" not in st.session_state:
 
 # Create a list for storing all conversation thread IDs
 if "chat_threads" not in st.session_state:
-    st.session_state["chat_threads"] = get_all_thread()
+    st.session_state["chat_threads"] = get_all_threads()
 
 
 # Add the current thread to the conversation list
 add_thread(st.session_state["thread_id"])
+
 
 # ========================= Sidebar threading feature =========================
 
@@ -197,8 +181,67 @@ for message in st.session_state["message_history"]:
             render_tool_history(message.get("tools", []))
 
 
-# Create the chat input box
-user_input = st.chat_input("Type here")
+# ========================= Fixed chat input with PDF upload =========================
+
+# Keep st.chat_input directly in the main body.
+# This keeps it fixed at the bottom of the screen.
+#
+# accept_file=True adds the attachment button inside the chat input.
+# file_type=["pdf"] allows PDF files only.
+submission = st.chat_input("Type here", accept_file=True, file_type=["pdf"])
+
+
+# Default user input value
+user_input = None
+
+
+# Process the submitted text and PDF
+if submission:
+
+    # Get the text entered by the user
+    user_input = submission.text
+
+    # Get the uploaded files
+    # This is always a list when accept_file is enabled
+    uploaded_files = submission.files
+
+    # Process the uploaded PDF if one was attached
+    if uploaded_files:
+
+        uploaded_pdf = uploaded_files[0]
+
+        # Store the temporary file path
+        temporary_file_path = None
+
+        try:
+
+            # Save the uploaded PDF as a temporary local file
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=".pdf"
+            ) as temporary_file:
+
+                temporary_file.write(uploaded_pdf.getvalue())
+
+                temporary_file_path = temporary_file.name
+
+            # Call the existing backend RAG ingestion function
+            with st.spinner(f"Processing {uploaded_pdf.name}..."):
+
+                ingest_rag_document(temporary_file_path)
+
+            # Display PDF processing confirmation
+            st.toast(f"{uploaded_pdf.name} processed successfully.", icon="✅")
+
+        except Exception as error:
+
+            # Display PDF processing error
+            st.error(f"PDF processing failed: {error}")
+
+        finally:
+
+            # Delete the temporary PDF after indexing
+            if temporary_file_path and os.path.exists(temporary_file_path):
+                os.remove(temporary_file_path)
 
 
 # Run this block after the user submits a message
@@ -225,7 +268,7 @@ if user_input:
         seen_tool_calls = set()
 
         def ai_only_stream():
-            for message_chunk, metadata in chat_bot.stream(
+            for message_chunk, metadata in chatbot.stream(
                 {"messages": [HumanMessage(content=user_input)]},
                 config=CONFIG,
                 stream_mode="messages",

@@ -1,4 +1,4 @@
-from agentic_chatbot_rag_backend import chat_bot, get_all_thread
+from agentic_chatbot_rag_backend import chatbot, get_all_threads
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 import streamlit as st
 import uuid  # Load environment variables from .env file
@@ -86,7 +86,7 @@ def reset_chat():
 def load_conversation(thread_id):
 
     # Get the saved state for the selected thread
-    state = chat_bot.get_state(config={"configurable": {"thread_id": thread_id}})
+    state = chatbot.get_state(config={"configurable": {"thread_id": thread_id}})
 
     # Return saved messages
     # Return an empty list if no messages are available
@@ -109,7 +109,7 @@ if "thread_id" not in st.session_state:
 
 # Create a list for storing all conversation thread IDs
 if "chat_threads" not in st.session_state:
-    st.session_state["chat_threads"] = get_all_thread()
+    st.session_state["chat_threads"] = get_all_threads()
 
 
 # Add the current thread to the conversation list
@@ -119,7 +119,6 @@ add_thread(st.session_state["thread_id"])
 
 # Display the sidebar title
 st.sidebar.title("My Conversations")
-
 
 # Create a button for starting a new conversation
 if st.sidebar.button("New Chat"):
@@ -225,7 +224,7 @@ if user_input:
         seen_tool_calls = set()
 
         def ai_only_stream():
-            for message_chunk, metadata in chat_bot.stream(
+            for message_chunk, metadata in chatbot.stream(
                 {"messages": [HumanMessage(content=user_input)]},
                 config=CONFIG,
                 stream_mode="messages",
