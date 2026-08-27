@@ -1,7 +1,59 @@
-from agentic_chatbot_db_backend import chat_bot, get_all_thread
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from agentic_chatbot_tool_backend import chat_bot, get_all_thread
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 import streamlit as st
-import uuid
+import uuid  # Load environment variables from .env file
+
+st.set_page_config(
+    page_title="Agentic Chatbot",
+    page_icon="🤖",
+    layout="centered",
+)
+
+st.markdown(
+    """
+    <style>
+    .block-container { max-width: 850px; padding-top: 2rem; }
+    [data-testid="stChatMessage"] { padding: 0.4rem 0; }
+    [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+        line-height: 1.65;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def message_text(content):
+    """Convert LangChain text or content blocks to renderable Markdown."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+        return "".join(parts)
+    return str(content or "")
+
+
+def tool_name(message):
+    """Get a readable tool name from a tool call or tool result."""
+    return getattr(message, "name", None) or "tool"
+
+
+def render_tool_history(tools):
+    if not tools:
+        return
+    with st.expander(f"🔧 {len(tools)} tool dipanggil", expanded=False):
+        for name in tools:
+            st.caption(f"• `{name}`")
 
 
 # Generate a unique thread ID for each new conversation
@@ -63,7 +115,6 @@ if "chat_threads" not in st.session_state:
 # Add the current thread to the conversation list
 add_thread(st.session_state["thread_id"])
 
-
 # ========================= Sidebar threading feature =========================
 
 # Display the sidebar title
@@ -113,7 +164,17 @@ for thread_id in st.session_state["chat_threads"][::-1]:
                 continue
 
             # Convert the LangChain message into a dictionary
-            temp_messages.append({"role": role, "content": message.content})
+            temp_messages.append(
+                {
+                    "role": role,
+                    "content": message_text(message.content),
+                    "tools": [
+                        call.get("name", "tool")
+                        for call in getattr(message, "tool_calls", [])
+                        if call.get("name")
+                    ],
+                }
+            )
 
         # Replace the current UI history with the selected conversation
         st.session_state["message_history"] = temp_messages
@@ -131,7 +192,9 @@ for message in st.session_state["message_history"]:
     with st.chat_message(message["role"]):
 
         # Display the message content
-        st.text(message["content"])
+        st.markdown(message["content"])
+        if message["role"] == "assistant":
+            render_tool_history(message.get("tools", []))
 
 
 # Create the chat input box
@@ -140,47 +203,78 @@ user_input = st.chat_input("Type here")
 
 # Run this block after the user submits a message
 if user_input:
-
-    # Save the user's message in Streamlit session state
-    st.session_state["message_history"].append({"role": "user", "content": user_input})
-
     # Display the user's message in the chat interface
     with st.chat_message("user"):
         st.text(user_input)
 
+    # Save the user's message in Streamlit session state
+    st.session_state["message_history"].append({"role": "user", "content": user_input})
+
     # Pass the current thread ID to LangGraph
     # LangGraph uses this ID to save and retrieve conversation memory
-
     CONFIG = {
         "configurable": {"thread_id": st.session_state["thread_id"]},
         "metadata": {"thread_id": st.session_state["thread_id"]},
         "run_name": "chat_trace",
     }
 
-    # Create the assistant chat-message container
+    # Assistant streaming block
     with st.chat_message("assistant"):
+        status_box = st.status("🧠 Menyiapkan jawaban...", expanded=True)
+        tool_names = []
+        seen_tool_calls = set()
 
-        # Stream the assistant response token by token
-        ai_message = st.write_stream(
-            # Return only the content of AI message chunks
-            message_chunk.content
-            # Stream messages from the LangGraph chatbot
+        def ai_only_stream():
             for message_chunk, metadata in chat_bot.stream(
-                {
-                    # Send the latest user message to the chatbot
-                    "messages": [HumanMessage(content=user_input)]
-                },
-                # Use the current conversation thread
+                {"messages": [HumanMessage(content=user_input)]},
                 config=CONFIG,
-                # Stream individual message chunks
                 stream_mode="messages",
-            )
-            # Display only AI messages
-            # This prevents tool and user messages from appearing
-            if isinstance(message_chunk, AIMessage)
+            ):
+                # Tool calls arrive in AI chunks before the tool result, so show
+                # them immediately instead of waiting for ToolMessage.
+                if isinstance(message_chunk, AIMessage):
+                    for call in getattr(message_chunk, "tool_calls", []):
+                        name = call.get("name")
+                        call_id = call.get("id") or name
+                        if name and call_id not in seen_tool_calls:
+                            seen_tool_calls.add(call_id)
+                            tool_names.append(name)
+                            status_box.write(f"🔧 Memanggil `{name}`...")
+                            status_box.update(
+                                label=f"🔧 Memanggil {len(tool_names)} tool",
+                                state="running",
+                                expanded=True,
+                            )
+
+                if isinstance(message_chunk, ToolMessage):
+                    name = tool_name(message_chunk)
+                    if name not in tool_names:
+                        tool_names.append(name)
+                    status_box.write(f"✅ `{name}` selesai")
+
+                # Stream ONLY assistant tokens
+                if isinstance(message_chunk, AIMessage):
+                    text = message_text(message_chunk.content)
+                    if text:
+                        yield text
+
+        ai_message = st.write_stream(ai_only_stream())
+
+        status_box.update(
+            label=(
+                f"✅ Selesai • {len(tool_names)} tool digunakan"
+                if tool_names
+                else "✅ Jawaban selesai"
+            ),
+            state="complete",
+            expanded=False,
         )
 
     # Save the complete assistant response in Streamlit session state
     st.session_state["message_history"].append(
-        {"role": "assistant", "content": ai_message}
+        {
+            "role": "assistant",
+            "content": ai_message,
+            "tools": tool_names,
+        }
     )

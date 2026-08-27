@@ -1,3 +1,4 @@
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START, END
 from langchain_ollama import ChatOllama
 from typing import TypedDict, Annotated
@@ -6,8 +7,12 @@ from typing import List
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import add_messages
 import sqlite3
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
 
 # model llm local
+# llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 llm = ChatOllama(model="llama3.2:3b")
 
 
