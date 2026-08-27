@@ -54,6 +54,6 @@ hasilnya dikirim kembali ke LLM untuk membuat jawaban final.
 - `app_thread.py`: demo percakapan multi-thread.
 - `app_streaming.py`: demo streaming response.
 
-![UI Streamlit](images/ui-streamlit.png)
+![UI Streamlit](images/ui.png)
 ![UI Streamlit](images/rag-answer.png)
 ![UI Streamlit](images/tool-answer.png)
