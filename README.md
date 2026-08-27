@@ -26,11 +26,11 @@ dibuat ulang setiap kali PDF baru diunggah.
 
 ## Tools
 
-| Tool | Fungsi |
-| --- | --- |
-| `rag_tool` | Mencari informasi dari PDF yang diunggah |
+| Tool          | Fungsi                                               |
+| ------------- | ---------------------------------------------------- |
+| `rag_tool`    | Mencari informasi dari PDF yang diunggah             |
 | `search_tool` | Mencari informasi terbaru di internet melalui Tavily |
-| `get_weather` | Mengambil cuaca terkini melalui Weatherstack |
+| `get_weather` | Mengambil cuaca terkini melalui Weatherstack         |
 
 ## Workflow
 
@@ -45,30 +45,6 @@ flowchart TD
 LLM menentukan apakah pertanyaan membutuhkan tool. Setelah tool selesai,
 hasilnya dikirim kembali ke LLM untuk membuat jawaban final.
 
-## Menjalankan Aplikasi
-
-Persyaratan: Python `>=3.12`.
-
-```bash
-uv sync
-```
-
-Buat file `.env`:
-
-```env
-GOOGLE_API_KEY=your_google_api_key
-TAVILY_API_KEY=your_tavily_api_key
-WEATHERSTACK_API_KEY=your_weatherstack_api_key
-```
-
-Jalankan aplikasi utama:
-
-```bash
-uv run streamlit run app_rag-yt.py
-```
-
-Unggah PDF melalui input chat, lalu ajukan pertanyaan berdasarkan dokumen.
-
 ## File Utama
 
 - `app_rag-yt.py`: aplikasi Streamlit dengan upload PDF dan RAG.
@@ -79,3 +55,5 @@ Unggah PDF melalui input chat, lalu ajukan pertanyaan berdasarkan dokumen.
 - `app_streaming.py`: demo streaming response.
 
 ![UI Streamlit](images/ui-streamlit.png)
+![UI Streamlit](images/rag-answer.png)
+![UI Streamlit](images/tool-answer.png)
